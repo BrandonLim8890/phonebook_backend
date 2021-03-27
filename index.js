@@ -5,6 +5,7 @@ const app = express()
 const morgan = require('morgan')
 const cors = require('cors')
 const Person = require('./models/person')
+const { response } = require('express')
 
 morgan.token('body', (req) => {
 	return JSON.stringify(req.body)
@@ -20,9 +21,7 @@ app.get(`/api/persons/:id`, (req, res) => {
 		.then((person) => {
 			res.json(person)
 		})
-		.catch((error) => {
-			res.status(404).end()
-		})
+		.catch((err) => next(err))
 })
 
 app.delete(`/api/persons/:id`, (req, res) => {
@@ -30,9 +29,7 @@ app.delete(`/api/persons/:id`, (req, res) => {
 		.then(() => {
 			res.status(204).end()
 		})
-		.catch((err) => {
-			res.status(404).end()
-		})
+		.catch((err) => next(err))
 })
 
 app.get(`/api/persons`, (req, res) => {
@@ -48,7 +45,7 @@ app.get(`/info`, (req, res) => {
 	})
 })
 
-app.post(`/api/persons`, (req, res) => {
+app.post(`/api/persons`, (req, res, next) => {
 	const body = req.body
 
 	if (!body.name) {
@@ -57,18 +54,18 @@ app.post(`/api/persons`, (req, res) => {
 		return res.status(400).json({ error: 'number missing' })
 	} else {
 		Person.find({ name: body.name }).then((person) => {
-			if (person.length === 0) {
-				// No person with the same name
-				const newPerson = new Person({
-					name: body.name,
-					number: body.number
-				})
-				newPerson.save().then((result) => {
+			const newPerson = new Person({
+				name: body.name,
+				number: body.number
+			})
+			newPerson
+				.save()
+				.then((result) => {
 					res.json(result)
 				})
-			} else {
-				res.status(400).json({ error: 'failed to save' })
-			}
+				.catch((err) => {
+					next(err)
+				})
 		})
 	}
 })
@@ -79,6 +76,17 @@ app.put(`/api/persons/:id`, (req, res) => {
 		res.status(204).end()
 	})
 })
+
+const errorHandler = (err, req, res, next) => {
+	console.error(err.message)
+
+	if (err.name === 'CastError') {
+		return response.status(400).send({ error: 'malformatted id' })
+	}
+	next(err)
+}
+
+app.use(errorHandler)
 
 const PORT = process.env.PORT
 app.listen(PORT, () => {
